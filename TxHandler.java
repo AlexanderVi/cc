@@ -63,16 +63,15 @@ public class TxHandler {
     boolean isDoubleSpending(Transaction tx)
     {
 
-        private HashSet<UTXO> s;
+        HashSet<UTXO> s = new HashSet<UTXO>();
 
         for( Transaction.Input inp : tx.getInputs() )
         {
             UTXO uxto = new UTXO(inp.prevTxHash, inp.outputIndex);
-            if( pool.contains( uxto ) ) s.add( uxto );
-
-            return false;
+            if( pool.contains( uxto ) && !s.add( uxto ) )
+                return true;
         }
-        return true;
+        return false;
     }
 
 

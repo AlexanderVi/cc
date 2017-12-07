@@ -2,6 +2,7 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.Signature;
 import java.security.SignatureException;
+import java.util.ArrayList;
 import java.util.HashSet;
 
 public class TxHandler {
@@ -32,8 +33,9 @@ public class TxHandler {
         if (!checkAllOutputsClaimed(tx)) return false;
         if (!checkValidInputSignatures(tx)) return false;
         if (isDoubleSpending(tx)) return false;
-        //if (!checkValidInputOutputSum(tx)) return false;
-        //if (checkNegativeOutput(tx)) return false;
+        if (checkNegativeOutput(tx)) return false;
+        if (!checkValidInputOutputSum(tx)) return false;
+
 
 
         return true;
@@ -45,9 +47,58 @@ public class TxHandler {
      * updating the current UTXO pool as appropriate.
      */
     public Transaction[] handleTxs(Transaction[] possibleTxs) {
-        // IMPLEMENT THIS
-        return null;
 
+        ArrayList<Transaction> res = new ArrayList<Transaction>();
+        for (Transaction tx : possibleTxs)
+        {
+            if(!isValidTx(tx)) continue;
+
+            for( int inp_idx = 0; inp_idx < tx.getInputs().size(); ++inp_idx )
+            {
+                Transaction.Input inp = tx.getInput(inp_idx);
+                UTXO utxo = getUtxo(inp.prevTxHash, inp.outputIndex);
+                pool.removeUTXO(utxo);
+            }
+
+            for( int out_idx = 0; out_idx < tx.getOutputs().size(); ++out_idx )
+            {
+                UTXO utxo = getUtxo(tx.getHash(), out_idx);
+                pool.addUTXO(utxo, tx.getOutput(out_idx));
+            }
+
+            res.add(tx);
+        }
+
+        return res.toArray(new Transaction[0]);
+
+    }
+
+    boolean checkValidInputOutputSum(Transaction tx)
+    {
+        double inpSum = 0, outSum=0;
+        for( int inp_idx = 0; inp_idx < tx.getInputs().size(); ++inp_idx )
+        {
+            Transaction.Input inp = tx.getInput(inp_idx);
+            Transaction.Output prevOut = pool.getTxOutput(new UTXO(inp.prevTxHash, inp.outputIndex));
+            inpSum += prevOut.value;
+        }
+
+        for( Transaction.Output out : tx.getOutputs() )
+        {
+            outSum += out.value;
+        }
+
+        return inpSum >= outSum;
+    }
+
+
+        boolean checkNegativeOutput(Transaction tx)
+    {
+        for( Transaction.Output out : tx.getOutputs() )
+        {
+            if(out.value < 0) return true;
+        }
+        return false;
     }
 
     boolean checkAllOutputsClaimed(Transaction tx)
@@ -75,13 +126,30 @@ public class TxHandler {
     }
 
 
+    Transaction.Output getPrevTxOutputFromPool( byte[] prevTxHash, int outputIndex )
+    {
+        return getPrevTxOutputFromPool( getUtxo(prevTxHash, outputIndex) );
+    }
+
+    UTXO getUtxo(byte[] prevTxHash, int outputIndex)
+    {
+        return new UTXO(prevTxHash, outputIndex);
+    }
+
+    Transaction.Output getPrevTxOutputFromPool( UTXO utxo )
+    {
+        return pool.getTxOutput(utxo);
+    }
+
+
+
     boolean checkValidInputSignatures(Transaction tx)
     {
         for( int inp_idx = 0; inp_idx < tx.getInputs().size(); ++inp_idx )
         {
             Transaction.Input inp = tx.getInput(inp_idx);
 
-            Transaction.Output prevOut = pool.getTxOutput( new UTXO(inp.prevTxHash, inp.outputIndex) );
+            Transaction.Output prevOut = getPrevTxOutputFromPool(inp.prevTxHash, inp.outputIndex);
 
             Signature sig = null;
             try {
